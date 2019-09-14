@@ -1,0 +1,166 @@
+---
+title: "Wine_Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+rm(list=ls())
+Red_wine=read.csv('~/Desktop/Wine_Project/winequality-red.csv')
+White_wine=read.csv('~/Desktop/Wine_Project/winequality-white.csv')
+Red_winedf=data.frame(Red_wine)
+White_winedf=data.frame(White_wine)
+Wine=rbind(Red_wine,White_wine)
+Winecopy=rbind(Red_wine,White_wine)
+train = data.frame(Winecopy)
+test = data.frame(Winecopy)
+tr = sample(1:6495,5200)
+train = train[tr,]
+test = test[-tr,] 
+```
+This code combines both of the data sets into one set. 
+```{r}
+summary(Wine)
+summary(Wine$quality)
+```
+
+```{r}
+model1=lm(Wine$quality~Wine$alcohol)
+summary(model1)
+plot(Wine$quality~Wine$alcohol)
+abline(model1)
+confint(model1)
+plot(model1)
+```
+Plotting one model
+```{r}
+null=lm(quality~1,data=Winecopy)
+full=lm(quality~fixed.acidity+volatile.acidity+citric.acid+residual.sugar+chlorides+free.sulfur.dioxide+total.sulfur.dioxide+density+pH+sulphates+alcohol+wine.type,data=Winecopy)
+#forward.model <- step(null,scope=list(lower=null, upper=full),direction="forward")
+#summary(forward.model)
+#backward.model <- step(full,scope=list(lower=null, upper=full),direction="backward")
+#summary(backward.model)
+both.model <- step(null,scope=list(lower=null, upper=full),direction="both",k=log(length(Winecopy)))
+summary(both.model)
+```
+This is the multi-directional stepwise regression model. 
+```{r}
+Winecopy=Winecopy[-c(152,4381),]
+```
+This removes the two points with the highest leverage and uses that new dataset to create a model with all of the variables. 
+
+```{r}
+model2=lm(quality~fixed.acidity+volatile.acidity+citric.acid+residual.sugar+chlorides+free.sulfur.dioxide+total.sulfur.dioxide+density+pH+sulphates+alcohol+wine.type,data=Winecopy)
+summary(model2)
+plot(model2)
+Linear_Test_error=sqrt(mean((test[,12]-predict.lm(model2,test))^2))
+Linear_Test_error
+```
+```{r}
+#PCR & PLS 
+train=data.frame(Winecopy)
+test=data.frame(Winecopy)
+tr=sample(1:6495,5196)
+train=train[tr,]
+test=test[-tr,]
+x=model.matrix(quality~.,Winecopy)[,-1] 
+y=Winecopy$quality 
+x_train=x[tr,]
+y_train=y[tr]
+x_test=-x_train
+y_test=-y_train
+
+library(pls)
+set.seed(2)
+pcr.fit=pcr(quality~.,data=train,validation ="CV")
+#validationplot(pcr.fit,val.type="MSEP")
+pcr.pred=predict(pcr.fit,x_test,ncomp=8) 
+PCR.RMSE=sqrt(mean((pcr.pred-y_test)^2))
+
+set.seed(1)
+pls.fit=plsr(quality~.,data=train,validation ="CV")
+#validationplot(pls.fit,val.type="MSEP")
+pls.pred=predict(pls.fit,x_test,ncomp=7) 
+PLS.RMSE=sqrt(mean((pls.pred-y_test)^2))
+```
+
+```{r}
+Test_RMSE<-c(Linear_Test_error,PCR.RMSE,PLS.RMSE)
+RMSE.SE <- data.frame(Test_RMSE, Test_MSE = (Test_RMSE^2))
+rownames(RMSE.SE) <- c("Best Subsets Linear","PCR","PLS")
+RMSE.SE
+```
+```{r}
+library(class)
+library(randomForest)
+library(ISLR)
+
+#get into training and test sets
+set.seed(1)
+t = sample(1:nrow(Wine), 3240)
+test.S = Wine[-t, ]
+train.S = Wine[t, ]
+
+```
+
+Bagging models
+```{r}
+set.seed(1)
+bag.wine= randomForest(formula = quality ~ .,data = Wine , subset = t, mtry = 12,importance = TRUE)
+yhat.bag = predict(bag.wine , newdata = Wine[-t, ])
+Wine.test = Wine[-t , 'quality']
+bagging_RMSE1=sqrt(mean((yhat.bag - Wine.test)^2))
+```
+
+```{r}
+bag.wine2 = randomForest(formula = quality~. ,data = Wine, subset = t, mtry = 6, ntree = 25)
+yhat.bag = predict(bag.wine2, newdata = Wine[-t ,])
+bagging_RMSE2=sqrt(mean((yhat.bag - Wine.test)^2))
+```
+
+Random Forest Model
+```{r}
+set.seed(1)
+rf.wine = randomForest(Wine$quality~. ,data = Wine, subset = t,mtry = 6, importance = TRUE)
+yhat.rf = predict(rf.wine ,newdata = test.S)
+Random_Forest_RMSE1=sqrt(mean((yhat.rf - Wine.test)^2))
+```
+```{r}
+importance(rf.wine)
+varImpPlot(rf.wine)
+```
+Boosting Models 
+```{r}
+library (gbm)
+set.seed(1)
+boost.wine=gbm(quality~.,data = Wine[t, ], distribution="gaussian", n.trees=5000, interaction.depth=4)
+summary(boost.wine)
+#it looks like alcohol and volatile.acidity are the most important
+```
+```{r}
+par(mfrow=c(1,2))
+plot(boost.wine ,i= "alcohol")
+plot(boost.wine ,i= "volatile.acidity")
+```
+
+
+```{r}
+yhat.boost = predict(boost.wine ,newdata = Wine[-t ,], n.trees=5000)
+boosting_RMSE=sqrt(mean((yhat.boost - Wine.test)^2))
+```
+
+```{r}
+Test_RMSE<-c(Linear_Test_error,PCR.RMSE,PLS.RMSE,bagging_RMSE1,bagging_RMSE2,Random_Forest_RMSE1,boosting_RMSE)
+RMSE.SE <- data.frame(Test_RMSE, Test_MSE = (Test_RMSE^2))
+rownames(RMSE.SE) <- c("Best Subsets Linear","PCR","PLS","Bagging 1","Bagging 2","Random Forest 1","Boosting")
+RMSE.SE
+```
