@@ -1,7 +1,7 @@
 # Wine_Project
 Predicting the Quality of Red and White Wine Academic Project 
 
- 
+Most valuable predictors were Alcohol Content (Percentage) and Volitile Acidity (Factor determining Red or White Wine)
  
 Model, Test_RMSE, Test_MSE
 
